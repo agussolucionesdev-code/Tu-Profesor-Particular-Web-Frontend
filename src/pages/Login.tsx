@@ -176,7 +176,7 @@ export const Login = () => {
                    ${errors.password ? "border-red-300 bg-red-50 focus:ring-2 focus:ring-red-100" : "border-gray-200 bg-white focus:ring-2 focus:ring-brand-green/10 focus:border-brand-green"}
                    ${isLoading ? "opacity-60 cursor-not-allowed" : "hover:border-gray-300"}
                 `}
-                placeholder="••••••••"
+                placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
               />
             </div>
             {errors.password && (

@@ -1,46 +1,50 @@
-import api from "./api";
 import axios from "axios";
+import { apiClient } from "./api";
+
+type LoginResponse = {
+  success: boolean;
+  data?: {
+    token: string;
+  };
+  message?: string;
+};
+
+const ADMIN_TOKEN_STORAGE_KEY = "adminToken";
 
 export const authService = {
-  // ============================================================================
-  // ACCIÓN: iniciarSesion
-  // ============================================================================
-  login: async (email: string, password: string) => {
+  login: async (email: string, password: string): Promise<LoginResponse> => {
     try {
-      const response = await api.post("/auth/login", { email, password });
+      const response = await apiClient.post<LoginResponse>("/auth/login", {
+        email,
+        password,
+      });
 
-      // Si es exitoso, guardamos el token en el navegador
-      if (response.data.success && response.data.token) {
-        localStorage.setItem("adminToken", response.data.token);
+      if (response.data.success && response.data.data?.token) {
+        localStorage.setItem(
+          ADMIN_TOKEN_STORAGE_KEY,
+          response.data.data.token,
+        );
       }
 
       return response.data;
     } catch (error: unknown) {
-      // Manejo estricto de errores de vanguardia (Type Narrowing)
       if (axios.isAxiosError(error)) {
-        // Es un error del servidor (ej. credenciales inválidas, error 400/500)
-        throw error.response?.data || new Error(error.message);
-      } else if (error instanceof Error) {
-        // Es un error nativo de JavaScript (ej. problemas de red)
-        throw new Error(error.message);
+        throw new Error(error.response?.data?.message || error.message);
       }
 
-      // Error completamente desconocido
-      throw new Error("An unexpected error occurred during login");
+      if (error instanceof Error) {
+        throw error;
+      }
+
+      throw new Error("An unexpected error occurred during login.");
     }
   },
 
-  // ============================================================================
-  // ACCIÓN: cerrarSesion
-  // ============================================================================
   logout: () => {
-    localStorage.removeItem("adminToken");
+    localStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
   },
 
-  // ============================================================================
-  // ACCIÓN: verificarEstadoSesion
-  // ============================================================================
   isAuthenticated: (): boolean => {
-    return !!localStorage.getItem("adminToken");
+    return !!localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY);
   },
 };
