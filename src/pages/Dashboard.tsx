@@ -21,6 +21,7 @@ import {
   Type,
   Wand2,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import { authService } from "../services/auth.service";
 import {
@@ -71,6 +72,97 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
   return fallback;
 };
 
+type BlockTypeConfig = {
+  value: ContentBlockType;
+  label: string;
+  description: string;
+  bodyLabel: string;
+  bodyPlaceholder: string;
+  assetLabel?: string;
+  assetPlaceholder?: string;
+  icon: LucideIcon;
+};
+
+const blockTypeConfigs: Record<ContentBlockType, BlockTypeConfig> = {
+  TEXT: {
+    value: "TEXT",
+    label: "Texto",
+    description: "Desarrollo claro para explicar un concepto paso a paso.",
+    bodyLabel: "Contenido",
+    bodyPlaceholder: "Escribí el fragmento que verá el alumno.",
+    icon: FileText,
+  },
+  CALLOUT: {
+    value: "CALLOUT",
+    label: "Concepto clave",
+    description: "Una idea breve para sostener atención y memoria de trabajo.",
+    bodyLabel: "Idea clave",
+    bodyPlaceholder: "Marcá la idea que no se tiene que perder.",
+    icon: Sparkles,
+  },
+  FORMULA: {
+    value: "FORMULA",
+    label: "Fórmula",
+    description: "Notación o procedimiento que necesita foco visual.",
+    bodyLabel: "Fórmula o desarrollo",
+    bodyPlaceholder: "Ej: A = π · r²",
+    icon: Type,
+  },
+  IMAGE: {
+    value: "IMAGE",
+    label: "Imagen",
+    description: "Apoyo visual para bajar carga cognitiva y dar contexto.",
+    bodyLabel: "Descripción pedagógica",
+    bodyPlaceholder: "Explicá qué debe observar el alumno en la imagen.",
+    assetLabel: "URL de imagen",
+    assetPlaceholder: "https://...",
+    icon: Image,
+  },
+  VIDEO: {
+    value: "VIDEO",
+    label: "Video",
+    description: "Recurso audiovisual para reforzar o demostrar un proceso.",
+    bodyLabel: "Guía de observación",
+    bodyPlaceholder: "Indicá qué mirar antes de reproducir el video.",
+    assetLabel: "URL de video",
+    assetPlaceholder: "https://...",
+    icon: Sparkles,
+  },
+  QUIZ: {
+    value: "QUIZ",
+    label: "Pregunta rápida",
+    description: "Chequeo breve para activar recuperación y feedback.",
+    bodyLabel: "Pregunta",
+    bodyPlaceholder: "Escribí una pregunta corta para comprobar comprensión.",
+    icon: Brain,
+  },
+  GRAPHIC_2D: {
+    value: "GRAPHIC_2D",
+    label: "Gráfico 2D",
+    description: "Base para gráficos, diagramas o representaciones planas.",
+    bodyLabel: "Instrucción visual",
+    bodyPlaceholder: "Describí qué gráfico 2D se va a construir.",
+    assetLabel: "URL de referencia",
+    assetPlaceholder: "Opcional: imagen, datos o recurso de apoyo.",
+    icon: Boxes,
+  },
+  GRAPHIC_3D: {
+    value: "GRAPHIC_3D",
+    label: "Escena 3D",
+    description: "Placeholder para simuladores, modelos y escenas interactivas.",
+    bodyLabel: "Objetivo de interacción",
+    bodyPlaceholder: "Describí qué podrá explorar el alumno en 3D.",
+    assetLabel: "URL de modelo o referencia",
+    assetPlaceholder: "Opcional: glTF, textura o recurso de apoyo.",
+    icon: Boxes,
+  },
+};
+
+const getBlockTypeConfig = (type: ContentBlockType): BlockTypeConfig =>
+  blockTypeConfigs[type];
+
+const blockTypeConfigList = Object.values(blockTypeConfigs);
+
 export const Dashboard = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<WorkspaceTab>("courses");
@@ -92,7 +184,7 @@ export const Dashboard = () => {
   const [blockType, setBlockType] = useState<ContentBlockType>("TEXT");
   const [blockTitle, setBlockTitle] = useState("");
   const [blockBody, setBlockBody] = useState("");
-  const [blockImageUrl, setBlockImageUrl] = useState("");
+  const [blockAssetUrl, setBlockAssetUrl] = useState("");
   const [blockIsHighlight, setBlockIsHighlight] = useState(false);
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
   const [lessonTitleByModule, setLessonTitleByModule] = useState<
@@ -116,6 +208,8 @@ export const Dashboard = () => {
         .find((lesson) => lesson.id === selectedLessonId) ?? null
     );
   }, [modules, selectedLessonId]);
+
+  const selectedBlockTypeConfig = getBlockTypeConfig(blockType);
 
   const totalLessons = modules.reduce(
     (total, moduleItem) => total + (moduleItem._count?.lessons ?? 0),
@@ -219,7 +313,7 @@ export const Dashboard = () => {
     setBlockType("TEXT");
     setBlockTitle("");
     setBlockBody("");
-    setBlockImageUrl("");
+    setBlockAssetUrl("");
     setBlockIsHighlight(false);
   };
 
@@ -373,7 +467,9 @@ export const Dashboard = () => {
       const contentPayload = {
         title: blockTitle.trim() || undefined,
         body: blockBody.trim(),
-        imageUrl: blockImageUrl.trim() || undefined,
+        assetUrl: blockAssetUrl.trim() || undefined,
+        imageUrl:
+          blockType === "IMAGE" ? blockAssetUrl.trim() || undefined : undefined,
       };
 
       if (editingBlockId) {
@@ -431,7 +527,10 @@ export const Dashboard = () => {
     setBlockType(block.type);
     setBlockTitle(getPayloadString(block.contentPayload, "title"));
     setBlockBody(getPayloadString(block.contentPayload, "body"));
-    setBlockImageUrl(getPayloadString(block.contentPayload, "imageUrl"));
+    setBlockAssetUrl(
+      getPayloadString(block.contentPayload, "assetUrl") ||
+        getPayloadString(block.contentPayload, "imageUrl"),
+    );
     setBlockIsHighlight(block.isHighlight);
     setFeedbackMessage("Editando bloque seleccionado.");
   };
@@ -975,14 +1074,15 @@ export const Dashboard = () => {
                               }
                               className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm outline-none transition focus:border-brand-green focus:ring-2 focus:ring-brand-green/20"
                             >
-                              <option value="TEXT">Texto</option>
-                              <option value="CALLOUT">Concepto clave</option>
-                              <option value="FORMULA">Fórmula</option>
-                              <option value="IMAGE">Imagen</option>
-                              <option value="QUIZ">Pregunta rápida</option>
-                              <option value="GRAPHIC_2D">Gráfico 2D</option>
-                              <option value="GRAPHIC_3D">Escena 3D</option>
+                              {blockTypeConfigList.map((config) => (
+                                <option key={config.value} value={config.value}>
+                                  {config.label}
+                                </option>
+                              ))}
                             </select>
+                            <span className="mt-2 block text-xs leading-5 text-slate-500">
+                              {selectedBlockTypeConfig.description}
+                            </span>
                           </label>
 
                           <StudioInput
@@ -993,18 +1093,21 @@ export const Dashboard = () => {
                           />
 
                           <StudioTextarea
-                            label="Contenido"
+                            label={selectedBlockTypeConfig.bodyLabel}
                             value={blockBody}
                             onChange={setBlockBody}
-                            placeholder="Escribí el fragmento que verá el alumno."
+                            placeholder={selectedBlockTypeConfig.bodyPlaceholder}
                           />
 
-                          {blockType === "IMAGE" && (
+                          {selectedBlockTypeConfig.assetLabel && (
                             <StudioInput
-                              label="URL de imagen"
-                              value={blockImageUrl}
-                              onChange={setBlockImageUrl}
-                              placeholder="https://..."
+                              label={selectedBlockTypeConfig.assetLabel}
+                              value={blockAssetUrl}
+                              onChange={setBlockAssetUrl}
+                              placeholder={
+                                selectedBlockTypeConfig.assetPlaceholder ??
+                                "https://..."
+                              }
                             />
                           )}
 
@@ -1123,11 +1226,13 @@ const ContentBlockPreview = ({
   onEdit,
   isEditing,
 }: ContentBlockPreviewProps) => {
+  const blockConfig = getBlockTypeConfig(block.type);
   const title = getPayloadString(block.contentPayload, "title");
   const body = getPayloadString(block.contentPayload, "body");
-  const imageUrl = getPayloadString(block.contentPayload, "imageUrl");
-  const Icon =
-    block.type === "IMAGE" ? Image : block.type === "FORMULA" ? Type : FileText;
+  const assetUrl =
+    getPayloadString(block.contentPayload, "assetUrl") ||
+    getPayloadString(block.contentPayload, "imageUrl");
+  const Icon = blockConfig.icon;
 
   return (
     <motion.article
@@ -1149,7 +1254,7 @@ const ContentBlockPreview = ({
           </div>
           <div>
             <p className="text-xs font-semibold uppercase text-slate-500">
-              Bloque {index + 1} · {block.type}
+              Bloque {index + 1} · {blockConfig.label}
             </p>
             {title && <h5 className="font-bold text-brand-blue">{title}</h5>}
           </div>
@@ -1195,17 +1300,58 @@ const ContentBlockPreview = ({
         />
       </div>
 
-      {imageUrl && (
+      {block.type === "IMAGE" && assetUrl && (
         <img
-          src={imageUrl}
+          src={assetUrl}
           alt={title || "Bloque visual"}
           className="mb-3 max-h-64 w-full rounded-lg object-cover"
         />
       )}
 
-      <p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">
-        {body}
-      </p>
+      {block.type === "VIDEO" && assetUrl && (
+        <div className="mb-3 rounded-lg border border-slate-200 bg-brand-blue p-4 text-white">
+          <p className="text-xs font-bold uppercase text-brand-green">
+            Recurso audiovisual
+          </p>
+          <p className="mt-2 break-all text-sm text-white/80">{assetUrl}</p>
+        </div>
+      )}
+
+      {(block.type === "GRAPHIC_2D" || block.type === "GRAPHIC_3D") && (
+        <div className="mb-3 rounded-lg border border-brand-green/30 bg-brand-green/10 p-4">
+          <p className="text-xs font-bold uppercase text-brand-green">
+            {block.type === "GRAPHIC_3D"
+              ? "Simulador 3D preparado"
+              : "Gráfico 2D preparado"}
+          </p>
+          <p className="mt-2 text-sm leading-6 text-brand-blue">
+            {assetUrl ||
+              "Este bloque queda listo para conectar una escena o recurso interactivo."}
+          </p>
+        </div>
+      )}
+
+      {block.type === "FORMULA" ? (
+        <code className="block rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-brand-blue">
+          {body}
+        </code>
+      ) : block.type === "QUIZ" ? (
+        <div className="rounded-lg border border-brand-blue/20 bg-white px-4 py-3">
+          <p className="text-xs font-bold uppercase text-brand-green">
+            Chequeo rápido
+          </p>
+          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">
+            {body}
+          </p>
+          <div className="mt-3 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-xs font-semibold text-slate-500">
+            Espacio reservado para respuesta y feedback.
+          </div>
+        </div>
+      ) : (
+        <p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">
+          {body}
+        </p>
+      )}
     </motion.article>
   );
 };
