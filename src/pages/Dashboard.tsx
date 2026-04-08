@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, type Variants } from "framer-motion";
 import {
+  ArrowDown,
+  ArrowUp,
   BookOpen,
   Boxes,
   Brain,
@@ -14,6 +16,7 @@ import {
   LogOut,
   Plus,
   Sparkles,
+  Trash2,
   Type,
   Wand2,
 } from "lucide-react";
@@ -379,6 +382,74 @@ export const Dashboard = () => {
       }
     } catch (error: unknown) {
       setFeedbackMessage(getErrorMessage(error, "No se pudo crear el bloque."));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleMoveContentBlock = async (
+    blockId: string,
+    direction: "up" | "down",
+  ) => {
+    if (!selectedLesson) return;
+
+    const currentIndex = contentBlocks.findIndex((block) => block.id === blockId);
+    const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+
+    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= contentBlocks.length) {
+      return;
+    }
+
+    const reorderedBlocks = [...contentBlocks];
+    [reorderedBlocks[currentIndex], reorderedBlocks[targetIndex]] = [
+      reorderedBlocks[targetIndex],
+      reorderedBlocks[currentIndex],
+    ];
+
+    const normalizedBlocks = reorderedBlocks.map((block, index) => ({
+      ...block,
+      appearanceOrder: index,
+    }));
+
+    setContentBlocks(normalizedBlocks);
+    setIsSaving(true);
+    setFeedbackMessage(null);
+
+    try {
+      const response = await contentBlockApiService.reorderLessonContentBlocks(
+        selectedLesson.id,
+        {
+          items: normalizedBlocks.map((block) => ({
+            id: block.id,
+            appearanceOrder: block.appearanceOrder,
+          })),
+        },
+      );
+
+      setContentBlocks(response.data ?? normalizedBlocks);
+      setFeedbackMessage("Secuencia de bloques actualizada.");
+    } catch (error: unknown) {
+      await loadContentBlocksByLesson(selectedLesson.id);
+      setFeedbackMessage(
+        getErrorMessage(error, "No se pudo reordenar la secuencia."),
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteContentBlock = async (blockId: string) => {
+    if (!selectedLesson) return;
+
+    setIsSaving(true);
+    setFeedbackMessage(null);
+
+    try {
+      await contentBlockApiService.deleteContentBlock(blockId);
+      await loadContentBlocksByLesson(selectedLesson.id);
+      setFeedbackMessage("Bloque eliminado de la lección.");
+    } catch (error: unknown) {
+      setFeedbackMessage(getErrorMessage(error, "No se pudo eliminar el bloque."));
     } finally {
       setIsSaving(false);
     }
@@ -894,6 +965,18 @@ export const Dashboard = () => {
                                   key={block.id}
                                   block={block}
                                   index={index}
+                                  canMoveUp={index > 0}
+                                  canMoveDown={index < contentBlocks.length - 1}
+                                  isSaving={isSaving}
+                                  onMoveUp={() =>
+                                    void handleMoveContentBlock(block.id, "up")
+                                  }
+                                  onMoveDown={() =>
+                                    void handleMoveContentBlock(block.id, "down")
+                                  }
+                                  onDelete={() =>
+                                    void handleDeleteContentBlock(block.id)
+                                  }
                                 />
                               ))}
                             </div>
@@ -929,9 +1012,24 @@ const getPayloadString = (
 type ContentBlockPreviewProps = {
   block: ContentBlockResponse;
   index: number;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  isSaving: boolean;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onDelete: () => void;
 };
 
-const ContentBlockPreview = ({ block, index }: ContentBlockPreviewProps) => {
+const ContentBlockPreview = ({
+  block,
+  index,
+  canMoveUp,
+  canMoveDown,
+  isSaving,
+  onMoveUp,
+  onMoveDown,
+  onDelete,
+}: ContentBlockPreviewProps) => {
   const title = getPayloadString(block.contentPayload, "title");
   const body = getPayloadString(block.contentPayload, "body");
   const imageUrl = getPayloadString(block.contentPayload, "imageUrl");
@@ -968,6 +1066,28 @@ const ContentBlockPreview = ({ block, index }: ContentBlockPreviewProps) => {
         )}
       </div>
 
+      <div className="mb-3 flex flex-wrap gap-2">
+        <PreviewActionButton
+          label="Subir"
+          icon={ArrowUp}
+          disabled={!canMoveUp || isSaving}
+          onClick={onMoveUp}
+        />
+        <PreviewActionButton
+          label="Bajar"
+          icon={ArrowDown}
+          disabled={!canMoveDown || isSaving}
+          onClick={onMoveDown}
+        />
+        <PreviewActionButton
+          label="Eliminar"
+          icon={Trash2}
+          disabled={isSaving}
+          onClick={onDelete}
+          tone="danger"
+        />
+      </div>
+
       {imageUrl && (
         <img
           src={imageUrl}
@@ -982,6 +1102,36 @@ const ContentBlockPreview = ({ block, index }: ContentBlockPreviewProps) => {
     </motion.article>
   );
 };
+
+type PreviewActionButtonProps = {
+  label: string;
+  icon: typeof ArrowUp;
+  disabled?: boolean;
+  onClick: () => void;
+  tone?: "neutral" | "danger";
+};
+
+const PreviewActionButton = ({
+  label,
+  icon: Icon,
+  disabled = false,
+  onClick,
+  tone = "neutral",
+}: PreviewActionButtonProps) => (
+  <button
+    type="button"
+    disabled={disabled}
+    onClick={onClick}
+    className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+      tone === "danger"
+        ? "border-red-100 text-red-600 hover:bg-red-50"
+        : "border-slate-200 text-brand-blue hover:border-brand-green hover:text-brand-green"
+    }`}
+  >
+    <Icon className="h-3.5 w-3.5" />
+    {label}
+  </button>
+);
 
 const StudioMetric = ({ label, value }: StudioMetricProps) => (
   <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
