@@ -36,3 +36,5 @@ npm.cmd run preview
 The frontend sends requests to `/api`. Vite proxies that path to the backend during local development.
 
 Authentication currently stores the admin JWT in browser storage for the local admin flow. A production-ready session model should move toward an HttpOnly cookie strategy once the backend/frontend deployment topology is finalized.
+
+Phase 2 includes typed service contracts for courses and lessons in `src/services/course.service.ts` and `src/services/lesson.service.ts`. These services are ready for the Admin Studio UI layer.
