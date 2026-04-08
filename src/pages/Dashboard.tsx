@@ -6,12 +6,15 @@ import {
   Boxes,
   Brain,
   Compass,
+  FileText,
+  Image,
   Layers,
   LibraryBig,
   LoaderCircle,
   LogOut,
   Plus,
   Sparkles,
+  Type,
   Wand2,
 } from "lucide-react";
 import { authService } from "../services/auth.service";
@@ -30,6 +33,11 @@ import {
   moduleApiService,
   type ModuleResponse,
 } from "../services/module.service";
+import {
+  contentBlockApiService,
+  type ContentBlockResponse,
+  type ContentBlockType,
+} from "../services/contentBlock.service";
 import brandLogo from "../assets/images/logo-completo-tu-profesor-transparent.png";
 import brandMark from "../assets/images/logo-tu-profesor-transparent.png";
 
@@ -64,7 +72,9 @@ export const Dashboard = () => {
   const [subjects, setSubjects] = useState<SubjectResponse[]>([]);
   const [courses, setCourses] = useState<CourseResponse[]>([]);
   const [modules, setModules] = useState<ModuleResponse[]>([]);
+  const [contentBlocks, setContentBlocks] = useState<ContentBlockResponse[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState<string>("");
+  const [selectedLessonId, setSelectedLessonId] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
@@ -74,6 +84,11 @@ export const Dashboard = () => {
   const [courseSubjectId, setCourseSubjectId] = useState("");
   const [courseSummary, setCourseSummary] = useState("");
   const [moduleTitle, setModuleTitle] = useState("");
+  const [blockType, setBlockType] = useState<ContentBlockType>("TEXT");
+  const [blockTitle, setBlockTitle] = useState("");
+  const [blockBody, setBlockBody] = useState("");
+  const [blockImageUrl, setBlockImageUrl] = useState("");
+  const [blockIsHighlight, setBlockIsHighlight] = useState(false);
   const [lessonTitleByModule, setLessonTitleByModule] = useState<
     Record<string, string>
   >({});
@@ -82,6 +97,19 @@ export const Dashboard = () => {
     () => courses.find((course) => course.id === selectedCourseId) ?? null,
     [courses, selectedCourseId],
   );
+
+  const selectedLesson = useMemo(() => {
+    return (
+      modules
+        .flatMap((moduleItem) =>
+          (moduleItem.lessons ?? []).map((lesson) => ({
+            ...lesson,
+            moduleTitle: moduleItem.title,
+          })),
+        )
+        .find((lesson) => lesson.id === selectedLessonId) ?? null
+    );
+  }, [modules, selectedLessonId]);
 
   const totalLessons = modules.reduce(
     (total, moduleItem) => total + (moduleItem._count?.lessons ?? 0),
@@ -100,11 +128,21 @@ export const Dashboard = () => {
   useEffect(() => {
     if (!selectedCourseId) {
       setModules([]);
+      setSelectedLessonId("");
       return;
     }
 
     void loadModulesByCourse(selectedCourseId);
   }, [selectedCourseId]);
+
+  useEffect(() => {
+    if (!selectedLessonId) {
+      setContentBlocks([]);
+      return;
+    }
+
+    void loadContentBlocksByLesson(selectedLessonId);
+  }, [selectedLessonId]);
 
   const loadWorkspace = async () => {
     setIsLoading(true);
@@ -135,10 +173,35 @@ export const Dashboard = () => {
   const loadModulesByCourse = async (courseId: string) => {
     try {
       const response = await moduleApiService.getModulesByCourse(courseId);
-      setModules(response.data ?? []);
+      const nextModules = response.data ?? [];
+
+      setModules(nextModules);
+      setSelectedLessonId((current) => {
+        const currentLessonStillExists = nextModules.some((moduleItem) =>
+          moduleItem.lessons?.some((lesson) => lesson.id === current),
+        );
+
+        if (current && currentLessonStillExists) {
+          return current;
+        }
+
+        return nextModules[0]?.lessons?.[0]?.id ?? "";
+      });
     } catch (error: unknown) {
       setFeedbackMessage(
         getErrorMessage(error, "No se pudo cargar la estructura del curso."),
+      );
+    }
+  };
+
+  const loadContentBlocksByLesson = async (lessonId: string) => {
+    try {
+      const response =
+        await contentBlockApiService.getContentBlocksByLesson(lessonId);
+      setContentBlocks(response.data ?? []);
+    } catch (error: unknown) {
+      setFeedbackMessage(
+        getErrorMessage(error, "No se pudieron cargar los bloques."),
       );
     }
   };
@@ -265,10 +328,57 @@ export const Dashboard = () => {
           ),
         );
         setLessonTitleByModule((current) => ({ ...current, [moduleItem.id]: "" }));
+        setSelectedLessonId(createdLesson.id);
         setFeedbackMessage("Lección agregada al módulo.");
       }
     } catch (error: unknown) {
       setFeedbackMessage(getErrorMessage(error, "No se pudo crear la lección."));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCreateContentBlock = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    if (!selectedLesson || !blockBody.trim()) return;
+
+    const ownerModule = modules.find((moduleItem) =>
+      moduleItem.lessons?.some((lesson) => lesson.id === selectedLesson.id),
+    );
+
+    if (!ownerModule) return;
+
+    setIsSaving(true);
+    setFeedbackMessage(null);
+
+    try {
+      const response = await contentBlockApiService.createContentBlock({
+        moduleId: ownerModule.id,
+        lessonId: selectedLesson.id,
+        type: blockType,
+        appearanceOrder: contentBlocks.length,
+        animationType: "fade-in",
+        isHighlight: blockIsHighlight,
+        contentPayload: {
+          title: blockTitle.trim() || undefined,
+          body: blockBody.trim(),
+          imageUrl: blockImageUrl.trim() || undefined,
+        },
+      });
+
+      const createdBlock = response.data;
+
+      if (createdBlock) {
+        setContentBlocks((current) => [...current, createdBlock]);
+        setBlockTitle("");
+        setBlockBody("");
+        setBlockImageUrl("");
+        setBlockIsHighlight(false);
+        setFeedbackMessage("Bloque agregado a la lección.");
+      }
+    } catch (error: unknown) {
+      setFeedbackMessage(getErrorMessage(error, "No se pudo crear el bloque."));
     } finally {
       setIsSaving(false);
     }
@@ -642,9 +752,15 @@ export const Dashboard = () => {
                             {moduleItem.lessons && moduleItem.lessons.length > 0 && (
                               <div className="mt-4 grid gap-2">
                                 {moduleItem.lessons.map((lesson) => (
-                                  <div
+                                  <button
                                     key={lesson.id}
-                                    className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3"
+                                    type="button"
+                                    onClick={() => setSelectedLessonId(lesson.id)}
+                                    className={`flex items-center justify-between rounded-lg border px-4 py-3 text-left transition ${
+                                      selectedLessonId === lesson.id
+                                        ? "border-brand-green bg-brand-green/10"
+                                        : "border-slate-200 bg-white hover:border-brand-green/60"
+                                    }`}
                                   >
                                     <div>
                                       <p className="font-semibold text-brand-dark">
@@ -655,12 +771,134 @@ export const Dashboard = () => {
                                       </p>
                                     </div>
                                     <Wand2 className="h-4 w-4 text-brand-green" />
-                                  </div>
+                                  </button>
                                 ))}
                               </div>
                             )}
                           </div>
                         ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+                    <div className="mb-5 flex flex-col gap-2">
+                      <p className="flex items-center gap-2 text-sm font-semibold text-brand-green">
+                        <Wand2 className="h-4 w-4" />
+                        Fase 3 · Content Block Studio
+                      </p>
+                      <h3 className="text-lg font-bold text-brand-blue">
+                        {selectedLesson
+                          ? selectedLesson.title
+                          : "Seleccioná una lección"}
+                      </h3>
+                      <p className="text-sm leading-6 text-slate-500">
+                        Diseñá la clase en fragmentos progresivos. Cada bloque
+                        aparece con calma, sostiene la atención y prepara el
+                        terreno para simuladores y escenas 3D.
+                      </p>
+                    </div>
+
+                    {!selectedLesson ? (
+                      <EmptyState
+                        title="Elegí una lección"
+                        description="Seleccioná una lección dentro de un módulo para crear sus primeros bloques."
+                      />
+                    ) : (
+                      <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
+                        <form
+                          onSubmit={handleCreateContentBlock}
+                          className="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4"
+                        >
+                          <label className="block text-sm font-semibold text-brand-blue">
+                            Tipo de bloque
+                            <select
+                              value={blockType}
+                              onChange={(event) =>
+                                setBlockType(event.target.value as ContentBlockType)
+                              }
+                              className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm outline-none transition focus:border-brand-green focus:ring-2 focus:ring-brand-green/20"
+                            >
+                              <option value="TEXT">Texto</option>
+                              <option value="CALLOUT">Concepto clave</option>
+                              <option value="FORMULA">Fórmula</option>
+                              <option value="IMAGE">Imagen</option>
+                              <option value="QUIZ">Pregunta rápida</option>
+                              <option value="GRAPHIC_2D">Gráfico 2D</option>
+                              <option value="GRAPHIC_3D">Escena 3D</option>
+                            </select>
+                          </label>
+
+                          <StudioInput
+                            label="Título interno"
+                            value={blockTitle}
+                            onChange={setBlockTitle}
+                            placeholder="Ej: Idea central"
+                          />
+
+                          <StudioTextarea
+                            label="Contenido"
+                            value={blockBody}
+                            onChange={setBlockBody}
+                            placeholder="Escribí el fragmento que verá el alumno."
+                          />
+
+                          {blockType === "IMAGE" && (
+                            <StudioInput
+                              label="URL de imagen"
+                              value={blockImageUrl}
+                              onChange={setBlockImageUrl}
+                              placeholder="https://..."
+                            />
+                          )}
+
+                          <label className="flex items-center gap-3 rounded-lg border border-brand-green/20 bg-white px-3 py-3 text-sm font-semibold text-brand-blue">
+                            <input
+                              type="checkbox"
+                              checked={blockIsHighlight}
+                              onChange={(event) =>
+                                setBlockIsHighlight(event.target.checked)
+                              }
+                              className="h-4 w-4 accent-brand-green"
+                            />
+                            Resaltar este bloque
+                          </label>
+
+                          <StudioButton disabled={isSaving || !blockBody.trim()}>
+                            Agregar bloque
+                          </StudioButton>
+                        </form>
+
+                        <div className="rounded-lg border border-slate-200 bg-brand-light p-4">
+                          <div className="mb-4 flex items-center justify-between">
+                            <div>
+                              <h4 className="font-bold text-brand-blue">
+                                Preview progresivo
+                              </h4>
+                              <p className="text-sm text-slate-500">
+                                {selectedLesson.moduleTitle}
+                              </p>
+                            </div>
+                            <Sparkles className="h-5 w-5 text-brand-green" />
+                          </div>
+
+                          {contentBlocks.length === 0 ? (
+                            <EmptyState
+                              title="Sin bloques todavía"
+                              description="Agregá el primer fragmento para ver cómo respira la clase."
+                            />
+                          ) : (
+                            <div className="space-y-3">
+                              {contentBlocks.map((block, index) => (
+                                <ContentBlockPreview
+                                  key={block.id}
+                                  block={block}
+                                  index={index}
+                                />
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -677,6 +915,72 @@ export const Dashboard = () => {
 type StudioMetricProps = {
   label: string;
   value: number;
+};
+
+const getPayloadString = (
+  payload: Record<string, unknown>,
+  key: string,
+): string => {
+  const value = payload[key];
+
+  return typeof value === "string" ? value : "";
+};
+
+type ContentBlockPreviewProps = {
+  block: ContentBlockResponse;
+  index: number;
+};
+
+const ContentBlockPreview = ({ block, index }: ContentBlockPreviewProps) => {
+  const title = getPayloadString(block.contentPayload, "title");
+  const body = getPayloadString(block.contentPayload, "body");
+  const imageUrl = getPayloadString(block.contentPayload, "imageUrl");
+  const Icon =
+    block.type === "IMAGE" ? Image : block.type === "FORMULA" ? Type : FileText;
+
+  return (
+    <motion.article
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, delay: index * 0.05 }}
+      className={`rounded-lg border bg-white p-4 shadow-sm ${
+        block.isHighlight
+          ? "border-brand-green ring-2 ring-brand-green/10"
+          : "border-slate-200"
+      }`}
+    >
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-blue text-white">
+            <Icon className="h-4 w-4" />
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase text-slate-500">
+              Bloque {index + 1} · {block.type}
+            </p>
+            {title && <h5 className="font-bold text-brand-blue">{title}</h5>}
+          </div>
+        </div>
+        {block.isHighlight && (
+          <span className="rounded-lg bg-brand-green px-2 py-1 text-xs font-bold text-white">
+            Clave
+          </span>
+        )}
+      </div>
+
+      {imageUrl && (
+        <img
+          src={imageUrl}
+          alt={title || "Bloque visual"}
+          className="mb-3 max-h-64 w-full rounded-lg object-cover"
+        />
+      )}
+
+      <p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">
+        {body}
+      </p>
+    </motion.article>
+  );
 };
 
 const StudioMetric = ({ label, value }: StudioMetricProps) => (
