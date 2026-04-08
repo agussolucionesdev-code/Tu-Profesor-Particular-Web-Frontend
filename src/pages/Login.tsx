@@ -3,8 +3,10 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence, type Variants } from "framer-motion";
 import { Mail, Lock, LogIn, AlertTriangle, LoaderCircle } from "lucide-react";
 import { authService } from "../services/auth.service";
-// IMPORTAMOS TU LOGO OFICIAL
 import logoCompletoTransparente from "../assets/images/logo-completo-tu-profesor-transparent.png";
+
+const PASSWORD_MIN_LENGTH = 8;
+const PASSWORD_MAX_LENGTH = 128;
 
 const containerVariants: Variants = {
   hidden: { opacity: 0, y: 30 },
@@ -48,8 +50,10 @@ export const Login = () => {
 
     if (!password) {
       newErrors.password = "La contraseña es obligatoria";
-    } else if (password.length < 6) {
-      newErrors.password = "La contraseña debe tener al menos 6 caracteres";
+    } else if (password.length < PASSWORD_MIN_LENGTH) {
+      newErrors.password = `La contraseña debe tener al menos ${PASSWORD_MIN_LENGTH} caracteres`;
+    } else if (password.length > PASSWORD_MAX_LENGTH) {
+      newErrors.password = `La contraseña no puede superar ${PASSWORD_MAX_LENGTH} caracteres`;
     }
 
     setErrors(newErrors);
@@ -127,7 +131,7 @@ export const Login = () => {
           )}
         </AnimatePresence>
 
-        <form onSubmit={handleLogin} className="space-y-7">
+        <form onSubmit={handleLogin} className="space-y-7" noValidate>
           <div className="group relative">
             <label
               className="block text-sm font-semibold text-brand-blue mb-2 ml-1"
@@ -140,6 +144,7 @@ export const Login = () => {
               <input
                 id="email"
                 type="email"
+                autoComplete="username"
                 disabled={isLoading}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -169,6 +174,9 @@ export const Login = () => {
               <input
                 id="password"
                 type="password"
+                autoComplete="current-password"
+                minLength={PASSWORD_MIN_LENGTH}
+                maxLength={PASSWORD_MAX_LENGTH}
                 disabled={isLoading}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
