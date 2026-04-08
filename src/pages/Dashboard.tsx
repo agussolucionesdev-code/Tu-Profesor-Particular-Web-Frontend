@@ -14,11 +14,13 @@ import {
   LibraryBig,
   LoaderCircle,
   LogOut,
+  Pencil,
   Plus,
   Sparkles,
   Trash2,
   Type,
   Wand2,
+  X,
 } from "lucide-react";
 import { authService } from "../services/auth.service";
 import {
@@ -92,6 +94,7 @@ export const Dashboard = () => {
   const [blockBody, setBlockBody] = useState("");
   const [blockImageUrl, setBlockImageUrl] = useState("");
   const [blockIsHighlight, setBlockIsHighlight] = useState(false);
+  const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
   const [lessonTitleByModule, setLessonTitleByModule] = useState<
     Record<string, string>
   >({});
@@ -141,9 +144,11 @@ export const Dashboard = () => {
   useEffect(() => {
     if (!selectedLessonId) {
       setContentBlocks([]);
+      setEditingBlockId(null);
       return;
     }
 
+    setEditingBlockId(null);
     void loadContentBlocksByLesson(selectedLessonId);
   }, [selectedLessonId]);
 
@@ -207,6 +212,15 @@ export const Dashboard = () => {
         getErrorMessage(error, "No se pudieron cargar los bloques."),
       );
     }
+  };
+
+  const resetContentBlockForm = () => {
+    setEditingBlockId(null);
+    setBlockType("TEXT");
+    setBlockTitle("");
+    setBlockBody("");
+    setBlockImageUrl("");
+    setBlockIsHighlight(false);
   };
 
   const handleLogout = () => {
@@ -341,7 +355,7 @@ export const Dashboard = () => {
     }
   };
 
-  const handleCreateContentBlock = async (event: React.FormEvent) => {
+  const handleSubmitContentBlock = async (event: React.FormEvent) => {
     event.preventDefault();
 
     if (!selectedLesson || !blockBody.trim()) return;
@@ -356,6 +370,38 @@ export const Dashboard = () => {
     setFeedbackMessage(null);
 
     try {
+      const contentPayload = {
+        title: blockTitle.trim() || undefined,
+        body: blockBody.trim(),
+        imageUrl: blockImageUrl.trim() || undefined,
+      };
+
+      if (editingBlockId) {
+        const response = await contentBlockApiService.updateContentBlock(
+          editingBlockId,
+          {
+            type: blockType,
+            animationType: "fade-in",
+            isHighlight: blockIsHighlight,
+            contentPayload,
+          },
+        );
+
+        const updatedBlock = response.data;
+
+        if (updatedBlock) {
+          setContentBlocks((current) =>
+            current.map((block) =>
+              block.id === updatedBlock.id ? updatedBlock : block,
+            ),
+          );
+          resetContentBlockForm();
+          setFeedbackMessage("Bloque actualizado.");
+        }
+
+        return;
+      }
+
       const response = await contentBlockApiService.createContentBlock({
         moduleId: ownerModule.id,
         lessonId: selectedLesson.id,
@@ -363,21 +409,14 @@ export const Dashboard = () => {
         appearanceOrder: contentBlocks.length,
         animationType: "fade-in",
         isHighlight: blockIsHighlight,
-        contentPayload: {
-          title: blockTitle.trim() || undefined,
-          body: blockBody.trim(),
-          imageUrl: blockImageUrl.trim() || undefined,
-        },
+        contentPayload,
       });
 
       const createdBlock = response.data;
 
       if (createdBlock) {
         setContentBlocks((current) => [...current, createdBlock]);
-        setBlockTitle("");
-        setBlockBody("");
-        setBlockImageUrl("");
-        setBlockIsHighlight(false);
+        resetContentBlockForm();
         setFeedbackMessage("Bloque agregado a la lección.");
       }
     } catch (error: unknown) {
@@ -385,6 +424,16 @@ export const Dashboard = () => {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleStartEditingContentBlock = (block: ContentBlockResponse) => {
+    setEditingBlockId(block.id);
+    setBlockType(block.type);
+    setBlockTitle(getPayloadString(block.contentPayload, "title"));
+    setBlockBody(getPayloadString(block.contentPayload, "body"));
+    setBlockImageUrl(getPayloadString(block.contentPayload, "imageUrl"));
+    setBlockIsHighlight(block.isHighlight);
+    setFeedbackMessage("Editando bloque seleccionado.");
   };
 
   const handleMoveContentBlock = async (
@@ -447,6 +496,9 @@ export const Dashboard = () => {
     try {
       await contentBlockApiService.deleteContentBlock(blockId);
       await loadContentBlocksByLesson(selectedLesson.id);
+      if (editingBlockId === blockId) {
+        resetContentBlockForm();
+      }
       setFeedbackMessage("Bloque eliminado de la lección.");
     } catch (error: unknown) {
       setFeedbackMessage(getErrorMessage(error, "No se pudo eliminar el bloque."));
@@ -878,9 +930,42 @@ export const Dashboard = () => {
                     ) : (
                       <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
                         <form
-                          onSubmit={handleCreateContentBlock}
+                          onSubmit={handleSubmitContentBlock}
                           className="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4"
                         >
+                          <div
+                            className={`rounded-lg border px-3 py-3 ${
+                              editingBlockId
+                                ? "border-brand-green bg-brand-green/10"
+                                : "border-slate-200 bg-white"
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="text-xs font-bold uppercase text-brand-green">
+                                  {editingBlockId
+                                    ? "Editando bloque"
+                                    : "Nuevo bloque"}
+                                </p>
+                                <p className="mt-1 text-sm leading-5 text-slate-600">
+                                  {editingBlockId
+                                    ? "Ajustá la pieza sin perder la secuencia."
+                                    : "Sumá el próximo fragmento de la clase."}
+                                </p>
+                              </div>
+                              {editingBlockId && (
+                                <button
+                                  type="button"
+                                  onClick={resetContentBlockForm}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-bold text-brand-blue transition hover:border-brand-green hover:text-brand-green"
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                  Cancelar
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
                           <label className="block text-sm font-semibold text-brand-blue">
                             Tipo de bloque
                             <select
@@ -936,7 +1021,7 @@ export const Dashboard = () => {
                           </label>
 
                           <StudioButton disabled={isSaving || !blockBody.trim()}>
-                            Agregar bloque
+                            {editingBlockId ? "Guardar cambios" : "Agregar bloque"}
                           </StudioButton>
                         </form>
 
@@ -977,6 +1062,10 @@ export const Dashboard = () => {
                                   onDelete={() =>
                                     void handleDeleteContentBlock(block.id)
                                   }
+                                  onEdit={() =>
+                                    handleStartEditingContentBlock(block)
+                                  }
+                                  isEditing={editingBlockId === block.id}
                                 />
                               ))}
                             </div>
@@ -1018,6 +1107,8 @@ type ContentBlockPreviewProps = {
   onMoveUp: () => void;
   onMoveDown: () => void;
   onDelete: () => void;
+  onEdit: () => void;
+  isEditing: boolean;
 };
 
 const ContentBlockPreview = ({
@@ -1029,6 +1120,8 @@ const ContentBlockPreview = ({
   onMoveUp,
   onMoveDown,
   onDelete,
+  onEdit,
+  isEditing,
 }: ContentBlockPreviewProps) => {
   const title = getPayloadString(block.contentPayload, "title");
   const body = getPayloadString(block.contentPayload, "body");
@@ -1042,7 +1135,9 @@ const ContentBlockPreview = ({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, delay: index * 0.05 }}
       className={`rounded-lg border bg-white p-4 shadow-sm ${
-        block.isHighlight
+        isEditing
+          ? "border-brand-blue ring-2 ring-brand-blue/10"
+          : block.isHighlight
           ? "border-brand-green ring-2 ring-brand-green/10"
           : "border-slate-200"
       }`}
@@ -1064,9 +1159,21 @@ const ContentBlockPreview = ({
             Clave
           </span>
         )}
+        {isEditing && (
+          <span className="rounded-lg bg-brand-blue px-2 py-1 text-xs font-bold text-white">
+            Editando
+          </span>
+        )}
       </div>
 
       <div className="mb-3 flex flex-wrap gap-2">
+        <PreviewActionButton
+          label="Editar"
+          icon={Pencil}
+          disabled={isSaving}
+          onClick={onEdit}
+          tone={isEditing ? "active" : "neutral"}
+        />
         <PreviewActionButton
           label="Subir"
           icon={ArrowUp}
@@ -1108,7 +1215,7 @@ type PreviewActionButtonProps = {
   icon: typeof ArrowUp;
   disabled?: boolean;
   onClick: () => void;
-  tone?: "neutral" | "danger";
+  tone?: "neutral" | "active" | "danger";
 };
 
 const PreviewActionButton = ({
@@ -1123,7 +1230,9 @@ const PreviewActionButton = ({
     disabled={disabled}
     onClick={onClick}
     className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-40 ${
-      tone === "danger"
+      tone === "active"
+        ? "border-brand-blue bg-brand-blue text-white hover:bg-brand-dark"
+        : tone === "danger"
         ? "border-red-100 text-red-600 hover:bg-red-50"
         : "border-slate-200 text-brand-blue hover:border-brand-green hover:text-brand-green"
     }`}
